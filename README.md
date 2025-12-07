@@ -1,3 +1,2 @@
 # ai_deploma_master
 ai_deploma_master
-salah
