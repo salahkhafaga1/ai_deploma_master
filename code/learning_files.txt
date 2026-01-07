@@ -1,0 +1,4 @@
+Hello Python Developer
+This is the second line.
+Line 3: File Handling is easy.
+Line 4: Jupyter is cool.
