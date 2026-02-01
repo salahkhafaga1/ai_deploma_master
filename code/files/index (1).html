@@ -1,0 +1,822 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>نظام متابعة الشيخ أحمد</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    body {  
+      background: #f8fafc;  
+      font-size: 14px;
+      -webkit-touch-callout: none;
+      -webkit-user-select: none;
+      -khtml-user-select: none;
+      -moz-user-select: none;
+      -ms-user-select: none;
+      user-select: none;
+    }
+    /* تحسين إضافي للشاشات الصغيرة جداً */
+    @media (max-width: 380px) {
+        body {
+            font-size: 13px;
+        }
+    }
+    input, textarea, select {
+      -webkit-user-select: text;
+      -moz-user-select: text;
+      -ms-user-select: text;
+      user-select: text;
+    }
+    /* تحسين الأزرار للمس */
+    button, input[type="checkbox"] {
+      min-height: 44px;
+      min-width: 44px;
+    }
+    /* تحسين الجداول للهواتف */
+    @media (max-width: 640px) {
+      .mobile-card {
+        display: block !important;
+      }
+      .mobile-hide {
+        display: none !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useMemo } = React;
+
+    const LS_KEY = "edu_center_state_v1";
+
+    function uid() {
+      return Math.random().toString(36).slice(2) + Date.now().toString(36);
+    }
+    function formatDate(d) {
+      const dt = typeof d === "string" ? new Date(d) : d;
+      const y = dt.getFullYear();
+      const m = String(dt.getMonth() + 1).padStart(2, "0");
+      const day = String(dt.getDate()).padStart(2, "0");
+      return `${y}-${m}-${day}`;
+    }
+    function monthKey(d) {
+      const dt = typeof d === "string" ? new Date(d) : d;
+      return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}`;
+    }
+    function weekdayAr(num) {
+      return ["الأحد","الإثنين","الثلاثاء","الأربعاء","الخميس","الجمعة","السبت"][num];
+    }
+
+    const defaultState = () => ({
+      classes: [
+        {
+          id: uid(),
+          name: "حلقة الناشئين",
+          days: [0, 2, 4],
+          students: [
+            { id: uid(), name: "أحمد علي", fatherPhone: "01000000000", days: [0,2,4], marks: [], fees: { payments: [] } },
+            { id: uid(), name: "سارة محمد", fatherPhone: "01111111111", days: [0,2,4], marks: [], fees: { payments: [] } },
+          ],
+        },
+      ],
+      attendance: {},
+    });
+
+    function usePersistentState() {
+      const [state, setState] = useState(() => {
+        try {
+          const raw = localStorage.getItem(LS_KEY);
+          return raw ? JSON.parse(raw) : defaultState();
+        } catch { return defaultState(); }
+      });
+      useEffect(() => { localStorage.setItem(LS_KEY, JSON.stringify(state)); }, [state]);
+      return [state, setState];
+    }
+
+    function CSVDownloadButton({ filename, rows, headers, children }) {
+      const href = useMemo(() => {
+        const headerKeys = Object.keys(headers);
+        const headerDisplay = Object.values(headers);
+        const head = headerDisplay.join(",");
+        const body = rows.map(r => headerKeys.map(k => (r[k] ?? "").toString().replace(/\n/g, " ")).join(",")).join("\n");
+        const csv = [head, body].filter(Boolean).join("\n");
+        return URL.createObjectURL(new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" }));
+      }, [rows, headers]);
+      return (
+        <a className="inline-block px-3 py-2 rounded-xl shadow hover:shadow-md border text-sm bg-white" download={filename} href={href}>
+          {children || "تنزيل CSV"}
+        </a>
+      );
+    }
+
+    const Chip = ({ children, className = "" }) => <span className={`px-2 py-1 rounded-xl bg-gray-100 text-gray-700 text-xs ${className}`}>{children}</span>;
+    
+    function Section({ title, children, actions, className = "" }) {
+      return (
+        <div className={`bg-white rounded-2xl shadow p-3 sm:p-4 mb-4 ${className}`}>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b pb-2 mb-3">
+            <h2 className="text-base sm:text-lg font-semibold">{title}</h2>
+            {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
+          </div>
+          {children}
+        </div>
+      );
+    }
+    
+    function DaysSelector({ value, onChange }) {
+      return (
+        <div className="grid grid-cols-3 sm:flex sm:flex-wrap gap-2">
+          {[0,1,2,3,4,5,6].map(d => (
+            <label key={d} className={`px-3 py-2 rounded-full border cursor-pointer text-sm text-center ${value.includes(d) ? "bg-black text-white" : "bg-white"}`}>
+              <input type="checkbox" className="hidden" checked={value.includes(d)} onChange={(e) => {
+                const sel = new Set(value); if (e.target.checked) sel.add(d); else sel.delete(d); onChange([...sel].sort((a,b)=>a-b));
+              }} />
+              {weekdayAr(d)}
+            </label>
+          ))}
+        </div>
+      );
+    }
+    
+    function FindStudent(classes, studentId) {
+      for (const cls of classes) { const st = cls.students.find(s => s.id === studentId); if (st) return { cls, student: st }; }
+      return null;
+    }
+
+    function StudentCard({ student, index, selectedClass, onEdit, onDelete }) {
+      return (
+        <div className="border rounded-xl p-3 mb-2 bg-gray-50">
+          <div className="flex justify-between items-start mb-2">
+            <div>
+              <div className="font-semibold text-base">{student.name}</div>
+              <div className="text-sm text-gray-600">{student.fatherPhone}</div>
+            </div>
+            <div className="text-xs text-gray-500">#{index + 1}</div>
+          </div>
+          <div className="mb-2">
+            <div className="text-xs text-gray-600 mb-1">أيام الحضور:</div>
+            <div className="flex gap-1 flex-wrap">
+              {(student.days || []).map(d => <Chip key={d}>{weekdayAr(d)}</Chip>)}
+              {(student.days || []).length === 0 && <span className="text-xs text-gray-500">لم تحدد</span>}
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <button className="flex-1 py-2 px-3 text-sm rounded-xl border bg-white" onClick={() => onEdit(selectedClass, student)}>تعديل</button>
+            <button className="flex-1 py-2 px-3 text-sm rounded-xl border bg-red-50 text-red-600" onClick={() => onDelete(selectedClass, student)}>حذف</button>
+          </div>
+        </div>
+      );
+    }
+
+    function AttendanceCard({ student, fromHisDays, attendance, onAttendanceChange, day, classId }) {
+      return (
+        <div className="border rounded-xl p-3 mb-2 bg-gray-50">
+          <div className="flex justify-between items-start mb-2">
+            <div>
+              <div className="font-semibold text-base">{student.name}</div>
+              <div className="text-sm text-gray-600">{student.fatherPhone}</div>
+            </div>
+            <div className="text-xs">
+              {fromHisDays ? <Chip className="bg-green-100 text-green-700">من أيامه</Chip> : <Chip className="bg-gray-100">ليس من أيامه</Chip>}
+            </div>
+          </div>
+          
+          <div className="space-y-3">
+            <label className="flex items-center gap-3">
+              <input 
+                type="checkbox" 
+                className="w-5 h-5" 
+                checked={attendance.present || false} 
+                onChange={(e) => onAttendanceChange(day, classId, student.id, { present: e.target.checked })} 
+                disabled={!fromHisDays}
+              />
+              <span className={`text-sm font-medium ${!fromHisDays ? 'text-gray-400' : ''}`}>حاضر</span>
+            </label>
+            
+            <div>
+              <span className={`text-sm font-medium mb-1 block ${!fromHisDays ? 'text-gray-400' : ''}`}>ملاحظات التسميع:</span>
+              <textarea 
+                className="w-full px-3 py-2 border rounded-xl text-sm" 
+                defaultValue={attendance.recitationNote || ""} 
+                onBlur={(e) => onAttendanceChange(day, classId, student.id, { recitationNote: e.target.value })} 
+                placeholder="اكتب ملاحظة التسميع هنا..." 
+                disabled={!fromHisDays}
+                rows="2"
+              ></textarea>
+            </div>
+          </div>
+        </div>
+      );
+    }
+    
+    function AttendanceSection({ selectedClass, getAttendance, setAttendance }) {
+      const [day, setDay] = useState(formatDate(new Date()));
+      const dayOfWeek = useMemo(() => new Date(day).getDay(), [day]);
+    
+      const studentsForDay = useMemo(() => {
+        return selectedClass.students
+          .map(st => ({ student: st, fromHisDays: (st.days || []).includes(dayOfWeek) }))
+          .sort((a, b) => b.fromHisDays - a.fromHisDays);
+      }, [selectedClass.students, dayOfWeek]);
+    
+      return (
+        <Section title={`الحضور والتسميع — ${selectedClass.name}`}>
+          <div className="flex flex-col sm:flex-row gap-3 items-center mb-3 p-3 border rounded-2xl bg-slate-50">
+            <label className="flex-1 w-full">
+              <span className="block text-xs font-medium mb-1">اختر اليوم:</span>
+              <input type="date" value={day} onChange={e => setDay(e.target.value)} className="w-full px-3 py-2 rounded-xl border" />
+            </label>
+            <div className="flex-1 w-full text-sm">
+              <div>اليوم المحدد: <Chip>{weekdayAr(dayOfWeek)} {day}</Chip></div>
+              <div>عدد الطلاب اليوم: <Chip>{studentsForDay.filter(s => s.fromHisDays).length}</Chip></div>
+            </div>
+          </div>
+    
+          <div className="block sm:hidden">
+            {studentsForDay.map(({ student, fromHisDays }) => (
+              <AttendanceCard
+                key={student.id}
+                student={student}
+                fromHisDays={fromHisDays}
+                attendance={getAttendance(day, selectedClass.id, student.id)}
+                onAttendanceChange={setAttendance}
+                day={day}
+                classId={selectedClass.id}
+              />
+            ))}
+          </div>
+    
+          <div className="hidden sm:block overflow-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b text-right">
+                  <th className="py-2 px-2">الطالب</th>
+                  <th className="py-2 px-2 w-2/5">ملاحظات التسميع</th>
+                  <th className="py-2 px-2 text-center">حاضر</th>
+                  <th className="py-2 px-2 text-center">من أيامه</th>
+                </tr>
+              </thead>
+              <tbody>
+                {studentsForDay.map(({ student, fromHisDays }) => {
+                  const attendance = getAttendance(day, selectedClass.id, student.id);
+                  return (
+                    <tr key={student.id} className={`border-b last:border-0 ${!fromHisDays ? 'bg-gray-50 text-gray-400' : ''}`}>
+                      <td className="py-2 px-2 font-semibold">{student.name}</td>
+                      <td className="py-2 px-2">
+                        <input type="text" className="w-full px-2 py-1 border rounded-lg" defaultValue={attendance.recitationNote || ""} onBlur={(e) => setAttendance(day, selectedClass.id, student.id, { recitationNote: e.target.value })} placeholder="ملاحظة على التسميع" disabled={!fromHisDays}/>
+                      </td>
+                      <td className="py-2 px-2 text-center">
+                        <input type="checkbox" className="w-5 h-5" checked={attendance.present || false} onChange={(e) => setAttendance(day, selectedClass.id, student.id, { present: e.target.checked })} disabled={!fromHisDays}/>
+                      </td>
+                      <td className="py-2 px-2 text-center">
+                        {fromHisDays ? <Chip className="bg-green-100 text-green-700">✓</Chip> : <Chip className="bg-gray-100">-</Chip>}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          {studentsForDay.length === 0 && <div className="text-sm text-gray-600">لا يوجد طلاب في هذا الفصل.</div>}
+        </Section>
+      );
+    }
+    
+    function InquirySection({ classes, attendance }) {
+        const [searchTerm, setSearchTerm] = useState("");
+        const [searchResult, setSearchResult] = useState(null);
+
+        const [feesMonth, setFeesMonth] = useState(monthKey(new Date()));
+        const [unpaidStudents, setUnpaidStudents] = useState([]);
+
+        function handleStudentSearch() {
+            if (!searchTerm.trim()) {
+                setSearchResult(null);
+                return;
+            }
+            let found = null;
+            for (const cls of classes) {
+                const student = cls.students.find(s => s.name.toLowerCase().includes(searchTerm.toLowerCase()));
+                if (student) {
+                    const studentAttendance = [];
+                    Object.keys(attendance).forEach(date => {
+                        const dayAttendance = attendance[date]?.[cls.id]?.[student.id];
+                        if (dayAttendance) {
+                             const wd = new Date(date).getDay();
+                             if ((student.days || []).includes(wd)) {
+                                 studentAttendance.push({
+                                     date,
+                                     status: dayAttendance.present ? "حاضر" : "غائب",
+                                     note: dayAttendance.recitationNote || ""
+                                 });
+                             }
+                        }
+                    });
+
+                    const presentDates = new Set(studentAttendance.map(a => a.date));
+                    Object.keys(attendance).forEach(date => {
+                         if (!presentDates.has(date)) {
+                             const wd = new Date(date).getDay();
+                             if ((student.days || []).includes(wd)) {
+                                 const att = attendance[date]?.[cls.id]?.[student.id];
+                                 if (!att || !att.present) {
+                                     studentAttendance.push({ date, status: "غائب", note: "" });
+                                 }
+                             }
+                         }
+                    });
+
+                    found = {
+                        ...student,
+                        className: cls.name,
+                        attendance: studentAttendance.sort((a,b) => new Date(b.date) - new Date(a.date))
+                    };
+                    break;
+                }
+            }
+            setSearchResult(found);
+        }
+
+        function handleUnpaidSearch() {
+            const results = [];
+            classes.forEach(cls => {
+                cls.students.forEach(st => {
+                    const hasPaid = (st.fees?.payments || []).some(p => p.month === feesMonth);
+                    if (!hasPaid) {
+                        results.push({
+                            name: st.name,
+                            fatherPhone: st.fatherPhone,
+                            className: cls.name
+                        });
+                    }
+                });
+            });
+            setUnpaidStudents(results);
+        }
+
+        return (
+            <Section title="استعلام">
+                <div className="mb-4 pb-4 border-b">
+                    <h3 className="text-md font-semibold mb-2">الاستعلام عن طالب</h3>
+                    <div className="flex flex-col sm:flex-row gap-2 mb-3">
+                        <input type="text" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleStudentSearch()} placeholder="اكتب اسم الطالب هنا..." className="flex-grow w-full px-3 py-2 border rounded-xl"/>
+                        <button onClick={handleStudentSearch} className="px-4 py-2 text-sm border rounded-xl bg-blue-50 text-blue-700">بحث</button>
+                    </div>
+
+                    {searchResult && (
+                        <div className="border rounded-2xl p-3 bg-slate-50 mt-3">
+                           <div className="flex justify-between items-start mb-2">
+                               <div>
+                                 <h4 className="text-lg font-bold">{searchResult.name}</h4>
+                                 <Chip className="bg-blue-100 text-blue-800 mt-1">{searchResult.className}</Chip>
+                               </div>
+                               <span className="text-sm text-gray-600" dir="ltr">{searchResult.fatherPhone}</span>
+                           </div>
+                           
+                           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                               <div>
+                                   <h5 className="font-semibold mb-1 text-sm">الدرجات</h5>
+                                   <div className="space-y-1 max-h-40 overflow-y-auto">
+                                       {(searchResult.marks || []).length > 0 ? searchResult.marks.map(m => (
+                                           <div key={m.id} className="text-xs flex justify-between p-2 bg-white rounded-lg">
+                                               <span>{m.title} ({m.date})</span>
+                                               <span className="font-bold">{m.score}/{m.max}</span>
+                                           </div>
+                                       )) : <p className="text-sm text-gray-500 p-2">لا توجد درجات.</p>}
+                                   </div>
+                               </div>
+                               <div>
+                                   <h5 className="font-semibold mb-1 text-sm">سجل الحضور والغياب</h5>
+                                   <div className="space-y-1 max-h-40 overflow-y-auto">
+                                       {searchResult.attendance.length > 0 ? searchResult.attendance.map(a => (
+                                           <div key={a.date} className={`text-xs flex justify-between p-2 rounded-lg ${a.status === 'حاضر' ? 'bg-green-100' : 'bg-red-100'}`}>
+                                               <span>{a.date}</span>
+                                               <span className="font-semibold">{a.status}</span>
+                                           </div>
+                                       )) : <p className="text-sm text-gray-500 p-2">لا يوجد سجل حضور.</p>}
+                                   </div>
+                               </div>
+                           </div>
+                        </div>
+                    )}
+                     {!searchResult && searchTerm && <div className="text-center text-gray-500 p-3">لم يتم العثور على طالب بهذا الاسم.</div>}
+                </div>
+
+                <div>
+                    <h3 className="text-md font-semibold mb-2">الاستعلام عن المصروفات (غير المسددة)</h3>
+                    <div className="flex flex-col sm:flex-row gap-2 mb-3">
+                        <input type="month" value={feesMonth} onChange={e => setFeesMonth(e.target.value)} className="flex-grow w-full px-3 py-2 border rounded-xl"/>
+                        <button onClick={handleUnpaidSearch} className="px-4 py-2 text-sm border rounded-xl bg-green-50 text-green-700">بحث عن غير المسددين</button>
+                    </div>
+
+                    {unpaidStudents.length > 0 && (
+                        <div>
+                             <p className="text-sm mb-2">الطلاب الذين لم يدفعوا مصروفات شهر <Chip>{feesMonth}</Chip> ({unpaidStudents.length} طالب)</p>
+                             <div className="max-h-60 overflow-y-auto border rounded-xl p-2 bg-gray-50">
+                                 {unpaidStudents.map((s, i) => (
+                                     <div key={i} className="flex justify-between items-center p-2 border-b last:border-0 text-sm">
+                                         <div>
+                                             <span className="font-semibold">{s.name}</span>
+                                             <span className="text-xs text-gray-500 mr-2">({s.className})</span>
+                                         </div>
+                                         <span className="text-gray-600 text-xs" dir="ltr">{s.fatherPhone}</span>
+                                     </div>
+                                 ))}
+                             </div>
+                        </div>
+                    )}
+                </div>
+            </Section>
+        );
+    }
+
+    function App() {
+      const [state, setState] = usePersistentState();
+      const [tab, setTab] = useState("attendance");
+      const [selectedClassId, setSelectedClassId] = useState(state.classes[0]?.id || "");
+      const [showMobileMenu, setShowMobileMenu] = useState(false);
+      const [selectedStudentIdForFees, setSelectedStudentIdForFees] = useState(null);
+
+      useEffect(() => {
+        if (!state.classes.find(c => c.id === selectedClassId)) {
+          setSelectedClassId(state.classes[0]?.id || "");
+        }
+      }, [state.classes, selectedClassId]);
+      
+      useEffect(() => {
+        setSelectedStudentIdForFees(null);
+      }, [selectedClassId]);
+
+      const selectedClass = state.classes.find(c => c.id === selectedClassId);
+
+      function updateClass(updated) {
+        setState(prev => ({ ...prev, classes: prev.classes.map(c => c.id === updated.id ? updated : c) }));
+      }
+      
+      function addClass() {
+        const name = prompt("اسم الفصل/الحلقة"); if (!name) return;
+        setState(prev => ({ ...prev, classes: [...prev.classes, { id: uid(), name, days: [], students: [] }] }));
+      }
+      
+      function deleteClass(id) {
+        if (!confirm("حذف هذا الفصل بما فيه من طلاب؟")) return;
+        setState(prev => ({ ...prev, classes: prev.classes.filter(c => c.id !== id) }));
+      }
+      
+      function addStudentToSelected() {
+        if (!selectedClass) return;
+        const name = prompt("اسم الطالب"); if (!name) return;
+        const fatherPhone = prompt("رقم ولي الأمر") || "";
+        const st = { id: uid(), name, fatherPhone, days: selectedClass.days || [], marks: [], fees: { payments: [] } };
+        updateClass({ ...selectedClass, students: [...selectedClass.students, st] });
+      }
+      
+      function editStudent(cls, st) {
+        const name = prompt("تعديل الاسم", st.name) || st.name;
+        const fatherPhone = prompt("تعديل رقم ولي الأمر", st.fatherPhone) || st.fatherPhone;
+        updateClass({ ...cls, students: cls.students.map(s => s.id === st.id ? { ...s, name, fatherPhone } : s) });
+      }
+      
+      function deleteStudent(cls, st) {
+        if (!confirm("حذف هذا الطالب؟")) return;
+        updateClass({ ...cls, students: cls.students.filter(s => s.id !== st.id) });
+      }
+
+      function handleSetClassDays(newDays) {
+        if (!selectedClass) return;
+        const updatedStudents = selectedClass.students.map(student => ({ ...student, days: newDays }));
+        const updatedClass = { ...selectedClass, days: newDays, students: updatedStudents };
+        updateClass(updatedClass);
+      }
+
+      function getAttendance(dateStr, classId, studentId) {
+        return state.attendance?.[dateStr]?.[classId]?.[studentId] || {};
+      }
+      
+      function setAttendance(dateStr, classId, studentId, payload) {
+        setState(prev => {
+          const next = structuredClone(prev);
+          const ensurePath = (obj, ...keys) => { let cur = obj; keys.forEach(k => { cur[k] = cur[k] || {}; cur = cur[k]; }); return cur; };
+          const slot = ensurePath(next.attendance, dateStr, classId);
+          slot[studentId] = { ...(slot[studentId] || {}), ...payload };
+          return next;
+        });
+      }
+
+      function computeAbsenteesForDate(dateStr, cls) {
+        const wd = new Date(dateStr).getDay();
+        const rows = [];
+        for (const st of cls.students) {
+          if (!st.days.includes(wd)) continue;
+          const att = getAttendance(dateStr, cls.id, st.id);
+          if (!att || att.present !== true) {
+            rows.push({ student: st.name, fatherPhone: st.fatherPhone, className: cls.name });
+          }
+        }
+        return rows;
+      }
+      
+      function computeRecitationReportForDate(dateStr, cls) {
+          const rows = [];
+          for (const st of cls.students) {
+            const att = getAttendance(dateStr, cls.id, st.id);
+            rows.push({
+              student: st.name,
+              fatherPhone: st.fatherPhone,
+              recitationNote: att.recitationNote || "لم تسجل ملاحظة"
+            });
+          }
+          return rows;
+      }
+
+      function addMark(cls, st, { date, title, score, max }) {
+        const mark = { id: uid(), date, title, score: Number(score), max: Number(max) };
+        updateClass({ ...cls, students: cls.students.map(s => s.id === st.id ? { ...s, marks: [...s.marks, mark] } : s) });
+      }
+      
+      function removeMark(cls, st, markId) {
+        updateClass({ ...cls, students: cls.students.map(s => s.id === st.id ? { ...s, marks: s.marks.filter(m => m.id !== markId) } : s) });
+      }
+
+      function addPayment(cls, st, { month, amount, note }) {
+        const pay = { id: uid(), month, amount: Number(amount || 0), note: note || "" };
+        updateClass({ ...cls, students: cls.students.map(s => s.id === st.id ? { ...s, fees: { ...s.fees, payments: [...(s.fees?.payments || []), pay] } } : s) });
+      }
+
+      const navItems = [
+        { id: "attendance", label: "الحضور والتسميع", icon: "✓" },
+        { id: "classes", label: "الفصول", icon: "📚" },
+        { id: "marks", label: "الدرجات", icon: "📝" },
+        { id: "fees", label: "المصروفات", icon: "💰" },
+        { id: "inquiry", label: "استعلام", icon: "🔍" },
+        { id: "parents", label: "ولي الأمر", icon: "👨‍👩‍👧" },
+        { id: "dashboard", label: "الإحصائيات", icon: "📊" },
+      ];
+
+      return (
+        <div className="min-h-screen text-gray-900 pb-20">
+          <header className="sticky top-0 bg-white/95 backdrop-blur z-20 border-b">
+            <div className="px-3 py-2">
+              <div className="flex items-center justify-between">
+                <div className="font-bold text-base">متابعة الشيخ أحمد</div>
+                <button className="sm:hidden p-2 rounded-xl border" onClick={() => setShowMobileMenu(!showMobileMenu)}>☰</button>
+              </div>
+              
+              <nav className={`${showMobileMenu ? 'block' : 'hidden'} sm:block mt-2`}>
+                <div className="grid grid-cols-3 sm:flex gap-1">
+                  {navItems.map(n => (
+                    <button key={n.id} onClick={() => { setTab(n.id); setShowMobileMenu(false); }} className={`px-2 py-2 rounded-lg text-xs sm:text-sm border ${tab === n.id ? "bg-black text-white" : "bg-white hover:bg-gray-100"}`}>
+                      <span className="hidden sm:inline">{n.icon} </span>
+                      {n.label}
+                    </button>
+                  ))}
+                </div>
+              </nav>
+            </div>
+          </header>
+
+          <main className="px-2 sm:px-4 py-3 max-w-6xl mx-auto">
+            <div className="bg-white rounded-2xl p-3 mb-3 shadow">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                <div className="flex-1">
+                  <label className="block text-xs mb-1">الفصل المحدد:</label>
+                  <select className="w-full px-3 py-2 rounded-xl border bg-white" value={selectedClassId} onChange={e => setSelectedClassId(e.target.value)}>
+                    {state.classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </div>
+                <div className="flex gap-2">
+                  <button className="px-3 py-2 text-sm rounded-xl border bg-green-50 text-green-700" onClick={addClass}>+ فصل</button>
+                  {selectedClass && <button className="px-3 py-2 text-sm rounded-xl border bg-red-50 text-red-600" onClick={() => deleteClass(selectedClass.id)}>حذف</button>}
+                </div>
+              </div>
+            </div>
+
+            {tab === "classes" && selectedClass && (
+              <Section title={`بيانات الفصل: ${selectedClass.name}`} actions={<button className="px-3 py-2 text-sm rounded-xl border bg-blue-50 text-blue-700" onClick={addStudentToSelected}>+ طالب</button>}>
+                <div className="mb-3 p-3 border rounded-2xl bg-slate-50">
+                  <label className="block text-sm font-medium mb-2 text-slate-800">أيام الحضور للجميع:</label>
+                  <DaysSelector value={selectedClass.days || []} onChange={(newDays) => handleSetClassDays(newDays)} />
+                </div>
+
+                <div className="block sm:hidden">
+                  {selectedClass.students.map((s, i) => ( <StudentCard key={s.id} student={s} index={i} selectedClass={selectedClass} onEdit={editStudent} onDelete={deleteStudent} /> ))}
+                </div>
+
+                <div className="hidden sm:block overflow-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-right border-b"><th className="py-2 px-1">#</th><th className="py-2 px-1">الاسم</th><th className="py-2 px-1">هاتف ولي الأمر</th><th className="py-2 px-1">أيام الحضور</th><th className="py-2 px-1">إجراءات</th></tr>
+                    </thead>
+                    <tbody>
+                      {selectedClass.students.map((s,i)=> (
+                        <tr key={s.id} className="border-b last:border-0">
+                          <td className="py-2 px-1">{i+1}</td>
+                          <td className="py-2 px-1">{s.name}</td>
+                          <td className="py-2 px-1">{s.fatherPhone}</td>
+                          <td className="py-2 px-1">
+                            <div className="flex gap-1 flex-wrap">
+                              {(s.days || []).map(d => <Chip key={d}>{weekdayAr(d)}</Chip>)}
+                            </div>
+                          </td>
+                          <td className="flex gap-2 py-2 px-1"><button className="px-3 py-1 text-xs rounded-xl border" onClick={()=>editStudent(selectedClass,s)}>تعديل</button><button className="px-3 py-1 text-xs rounded-xl border" onClick={()=>deleteStudent(selectedClass,s)}>حذف</button></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </Section>
+            )}
+
+            {tab === "attendance" && selectedClass && ( <AttendanceSection selectedClass={selectedClass} getAttendance={getAttendance} setAttendance={setAttendance} /> )}
+
+            {tab === "marks" && selectedClass && (
+              <Section title={`الدرجات — ${selectedClass.name}`}>
+                {selectedClass.students.length === 0 ? ( <div className="text-sm text-gray-600">لا يوجد طلاب.</div> ) : (
+                  <div className="space-y-3">
+                    {selectedClass.students.map(s => (
+                      <div key={s.id} className="border rounded-xl p-3 bg-white">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="font-semibold">{s.name}</div>
+                          <div className="text-xs text-gray-500">{s.fatherPhone}</div>
+                        </div>
+                        <div className="mb-2">
+                          <form className="space-y-2" onSubmit={(e)=>{ e.preventDefault(); const fd = new FormData(e.currentTarget); const date = fd.get("date"); const title = fd.get("title"); const score = fd.get("score"); const max = fd.get("max"); if(!title||!score||!max) return; addMark(selectedClass, s, { date: date || formatDate(new Date()), title, score, max }); e.currentTarget.reset(); }}>
+                            <div className="grid grid-cols-2 gap-2">
+                              <input name="date" type="date" className="px-3 py-2 text-sm border rounded-xl" />
+                              <input name="title" placeholder="اسم الاختبار" className="px-3 py-2 text-sm border rounded-xl" />
+                            </div>
+                            <div className="grid grid-cols-3 gap-2">
+                              <input name="score" type="number" step="0.01" placeholder="الدرجة" className="px-3 py-2 text-sm border rounded-xl" />
+                              <input name="max" type="number" step="0.01" placeholder="المجموع" className="px-3 py-2 text-sm border rounded-xl" />
+                              <button className="px-3 py-2 text-sm border rounded-xl bg-blue-50 text-blue-700">إضافة</button>
+                            </div>
+                          </form>
+                        </div>
+                        <div className="space-y-1">
+                          {s.marks.map(m => (
+                            <div key={m.id} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
+                              <div>
+                                <div className="font-medium text-sm">{m.title}</div>
+                                <div className="text-xs text-gray-500">{m.date || "-"}</div>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm">{m.score}/{m.max}</span>
+                                <button className="px-2 py-1 border rounded-lg text-xs" onClick={()=>removeMark(selectedClass, s, m.id)}>حذف</button>
+                              </div>
+                            </div>
+                          ))}
+                          {s.marks.length === 0 && (<div className="py-2 text-gray-500 text-sm">لا توجد درجات.</div>)}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </Section>
+            )}
+
+            {tab === "fees" && selectedClass && (
+              <Section title={`المصروفات — ${selectedClass.name}`}>
+                {!selectedStudentIdForFees ? (
+                  <div className="space-y-2">
+                    <p className="text-sm text-gray-600 mb-2">اختر طالباً لتسجيل الدفع.</p>
+                    {selectedClass.students.map(s => (
+                      <button key={s.id} onClick={() => setSelectedStudentIdForFees(s.id)} className="w-full text-right p-3 border rounded-xl bg-white hover:bg-gray-50 flex justify-between items-center">
+                        <span className="font-semibold">{s.name}</span>
+                        <span className="text-xs text-blue-600">عرض &raquo;</span>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  (() => {
+                    const s = selectedClass.students.find(st => st.id === selectedStudentIdForFees);
+                    if (!s) return null;
+                    return (
+                        <div>
+                            <button onClick={() => setSelectedStudentIdForFees(null)} className="mb-2 px-3 py-2 text-sm border rounded-xl hover:bg-gray-100">&laquo; العودة للقائمة</button>
+                            <div className="border rounded-xl p-3 bg-white">
+                              <div className="flex items-center justify-between mb-2">
+                                <div className="font-semibold text-base">{s.name}</div>
+                                <div className="text-xs text-gray-500">{s.fatherPhone}</div>
+                              </div>
+                              <form className="space-y-2 mb-2 bg-gray-50 p-2 rounded-xl" onSubmit={(e)=>{ e.preventDefault(); const fd = new FormData(e.currentTarget); const month = fd.get("month"); const amount = fd.get("amount"); const note = fd.get("note"); if(!month) return; addPayment(selectedClass, s, { month, amount, note }); e.currentTarget.reset(); }}>
+                                <input name="month" type="month" defaultValue={monthKey(new Date())} className="w-full px-3 py-2 text-sm border rounded-xl" />
+                                <div className="grid grid-cols-2 gap-2">
+                                  <input name="amount" type="number" step="0.01" placeholder="المبلغ" className="px-3 py-2 text-sm border rounded-xl" />
+                                  <button className="px-3 py-2 text-sm border rounded-xl bg-green-50 text-green-700">تسجيل دفع</button>
+                                </div>
+                                <input name="note" placeholder="ملاحظة" className="w-full px-3 py-2 text-sm border rounded-xl" />
+                              </form>
+                              <div className="text-sm mb-2">
+                                <Chip>الشهور المدفوعة: {(s.fees?.payments || []).length}</Chip>
+                              </div>
+                              <div className="space-y-1">
+                                {(s.fees?.payments || []).sort((a,b) => b.month.localeCompare(a.month)).map(p => (
+                                  <div key={p.id} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg text-sm">
+                                    <span>{p.month}</span>
+                                    <span>{p.amount || 0} جنيه</span>
+                                  </div>
+                                ))}
+                                {(s.fees?.payments || []).length === 0 && (<div className="py-2 text-gray-500 text-sm">لا توجد مدفوعات.</div>)}
+                              </div>
+                            </div>
+                        </div>
+                    );
+                  })()
+                )}
+              </Section>
+            )}
+            
+            {tab === "inquiry" && ( <InquirySection classes={state.classes} attendance={state.attendance} /> )}
+
+            {tab === "parents" && selectedClass && (
+              <Section title={`تقارير ولي الأمر`} actions={
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <CSVDownloadButton filename={`غياب_${selectedClass.name}_${formatDate(new Date())}.csv`} headers={{ student: "الطالب", fatherPhone: "هاتف ولي الأمر", className: "الفصل" }} rows={computeAbsenteesForDate(formatDate(new Date()), selectedClass)}>غياب اليوم</CSVDownloadButton>
+                  <CSVDownloadButton filename={`تسميع_${selectedClass.name}_${formatDate(new Date())}.csv`} headers={{ student: "الطالب", fatherPhone: "هاتف ولي الأمر", recitationNote: "ملاحظات التسميع" }} rows={computeRecitationReportForDate(formatDate(new Date()), selectedClass)}>تقرير التسميع اليومي</CSVDownloadButton>
+                </div>
+              }>
+                  <div className="text-sm text-gray-700 space-y-2">
+                    <p>من هنا يمكنك استخراج تقارير يومية بصيغة CSV للتواصل مع أولياء الأمور.</p>
+                    <div className="pt-2">
+                      <h3 className="font-semibold text-base mb-1">هواتف أولياء الأمور</h3>
+                      <div className="max-h-48 overflow-y-auto border rounded-xl p-2 bg-gray-50">
+                        {selectedClass.students.map(s => (
+                            <div key={s.id} className="flex justify-between items-center p-2 border-b last:border-0 text-sm">
+                                <span>{s.name}</span>
+                                <span className="text-gray-600" dir="ltr">{s.fatherPhone || "لا يوجد"}</span>
+                            </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+              </Section>
+            )}
+            
+            {tab === "dashboard" && (
+              <Section title="الإحصائيات العامة">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  <div className="bg-blue-50 p-3 rounded-xl">
+                    <div className="text-xs text-blue-800">إجمالي الفصول</div>
+                    <div className="text-2xl sm:text-3xl font-bold text-blue-900">{state.classes.length}</div>
+                  </div>
+                  <div className="bg-green-50 p-3 rounded-xl">
+                    <div className="text-xs text-green-800">إجمالي الطلاب</div>
+                    <div className="text-2xl sm:text-3xl font-bold text-green-900">
+                      {state.classes.reduce((sum, cls) => sum + cls.students.length, 0)}
+                    </div>
+                  </div>
+                   <div className="bg-yellow-50 p-3 rounded-xl">
+                    <div className="text-xs text-yellow-800">طلاب اليوم</div>
+                    <div className="text-2xl sm:text-3xl font-bold text-yellow-900">
+                      {(() => {
+                        const today = new Date().getDay();
+                        return state.classes.reduce((sum, cls) => sum + cls.students.filter(s => (s.days || []).includes(today)).length, 0);
+                      })()}
+                    </div>
+                  </div>
+                </div>
+                 <div className="mt-4 pt-4 border-t">
+                   <h3 className="font-semibold mb-2">إعدادات عامة</h3>
+                   <div className="flex">
+                       <button className="px-3 py-2 text-sm rounded-xl border bg-red-50 text-red-700"
+                         onClick={() => {
+                           if (confirm("هل أنت متأكد من أنك تريد حذف جميع البيانات؟ لا يمكن التراجع عن هذا الإجراء.")) {
+                             localStorage.removeItem(LS_KEY);
+                             window.location.reload();
+                           }
+                         }}
+                       >
+                         حذف جميع البيانات
+                       </button>
+                   </div>
+                 </div>
+              </Section>
+            )}
+
+            {!selectedClass && state.classes.length > 0 && (
+                <div className="text-center py-8"><p>الرجاء اختيار فصل للبدء.</p></div>
+            )}
+
+            {state.classes.length === 0 && (
+                 <div className="text-center py-8 bg-white rounded-2xl shadow">
+                   <h2 className="text-lg font-semibold mb-2">مرحباً بك في نظام المتابعة!</h2>
+                   <p className="text-gray-600 mb-3 text-sm">ابدأ بإضافة فصل أو حلقة جديدة.</p>
+                   <button className="px-4 py-2 text-sm rounded-xl border bg-green-50 text-green-700" onClick={addClass}>+ إضافة أول فصل</button>
+                 </div>
+            )}
+          </main>
+        </div>
+      );
+    }
+
+    ReactDOM.render(<App />, document.getElementById('root'));
+
+  </script>
+</body>
+</html>
