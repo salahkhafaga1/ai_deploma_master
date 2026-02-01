@@ -26,3 +26,29 @@ vec=np.array([1,2,3,4,5,6])
 def reshape_vector_to_matrix(vec):
     return vec.reshape(2,3)
 reshape_vector_to_matrix(vec)
+# ---------------
+
+import numpy as np
+
+def array_factory(mode, shape, value=None):
+    """
+    Creates various NumPy arrays based on the mode.
+    """
+    try:
+        if mode == "zeros":
+            return np.zeros(shape)
+        elif mode == "ones":
+            return np.ones(shape)
+        elif mode == "full":
+            if value is None:
+                raise ValueError("Mode 'full' requires a 'value' parameter.")
+            return np.full(shape, value)
+        elif mode == "identity":
+            size = shape[0] if isinstance(shape, (list, tuple)) else shape
+            return np.eye(size)
+        else:
+            return "please enter the correct mode"
+            
+    except Exception as e:
+        return str(e)
+
