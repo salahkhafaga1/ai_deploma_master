@@ -1,0 +1,3 @@
+Hello World!
+Welcome to Python Programming.
+OOP is fun and powerful.
