@@ -1,0 +1,32 @@
+A Step-by-Step Guide for Machine learning journy with the most important resources. 
+
+1. Data Collection
+This initial phase involves gathering raw data from various sources relevant to your problem. It's the foundation upon which your entire ML project will be built
+
+https://lnkd.in/dA3EHqCN
+
+2. Data Understanding
+Once collected, data needs to be thoroughly explored to uncover patterns, anomalies, and relationships. This step helps in gaining insights and formulating hypotheses.
+
+3. Data Preprocessing
+Raw data is rarely clean. This critical step involves cleaning and transforming data to make it suitable for modeling. Key tasks include handling duplicates, missing values, irrelevant data, outliers, and variation (scaling).
+
+https://lnkd.in/dQPmpi9K
+
+4. Feature Engineering
+This creative process involves selecting, transforming, and creating new features from existing raw data to improve the performance of machine learning models. Well-engineered features can significantly boost model accuracy.
+
+https://lnkd.in/duYSciia
+
+5. Modeling
+This is where the core of machine learning happens. It involves selecting the appropriate algorithm (ML or DL), training the model on the preprocessed data, and fine-tuning its parameters. 
+
+https://lnkd.in/dZ5evim5
+
+6. ML Deployment 
+The final step is to make your trained model accessible and operational in a real-world environment. This could involve integrating it into an application, API, or cloud service.
+
+https://lnkd.in/dhfUcYa4
+
+Start your journey at https://dotpy.tech/
+hashtag#MachineLearning hashtag#MLOps hashtag#DataScience hashtag#AI hashtag#DeepLearning hashtag#PEFT hashtag#CareerInAI
